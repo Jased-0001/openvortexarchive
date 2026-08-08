@@ -97,10 +97,11 @@ def download_clients(ver:str,app_type:str):
 
                     tries = -999
                 else:
-                    print(f"   *- failure {request.status_code}, trying again in {timeout}s")
                     tries -= 1
-                    time.sleep(timeout)
-                    timeout += 10
+                    if tries != 0:
+                        print(f"   *- failure {request.status_code}, trying again in {timeout}s")
+                        time.sleep(timeout)
+                        timeout += 20
 
                 if tries == 0:
                     print(f"   *- giving up on {i[0]}")
