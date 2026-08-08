@@ -54,10 +54,11 @@ def download_clients(ver:str,app_type:str):
         print(f" *- Hitting {url}... ")
 
         try:
-            tries = 3
+            tries = 4
             timeout = 10
             while tries > 0:
                 request = requests.request(method="GET", url=url, cookies={"session_token": Config["vortex"]["api"]["session_token"]})
+                print(f"     *- GO!")
 
                 if request.status_code == 200:
                     # MD5 sum the file
@@ -83,8 +84,7 @@ def download_clients(ver:str,app_type:str):
                     with open(filepath, "wb") as f:
                         f.write(request.content)
 
-                    downloaded.append(
-                    {
+                    downloaded.append({
                         "client-name":   i[0],
                         "success":       True,
                         "code":          request.status_code,
@@ -218,6 +218,7 @@ def get_latest_versions():
 
                 if tries == 0:
                     print(f"   *- giving up on {i}")
+                    versions[i] = None
         except Exception as e:
             raise e
         
@@ -249,16 +250,37 @@ def check_for_update(app_type:str, version:str):
 
 if __name__ == "__main__":
     versions = get_latest_versions()
-    check_for_update('studio', '0.1.1')
-    check_for_update('client', '0.3.0')
 
-    #clients = download_clients(ver=versions["client"], app_type="client")
-    #studio  = download_clients(ver=versions["studio"], app_type="studio")
+    embeds: list[webhook.Embed] = []
 
-    #describe_db(clients=clients, ver=versions["client"], app_type="client")
-    #describe_db(clients=studio,  ver=versions["studio"], app_type="studio")
+    if versions["client"]:
+        print("! Client archive:")
+        has_update = check_for_update('client', versions["client"])
 
-    #send_message(embeds=[
-    #    gen_embed(clients=clients,ver=versions["client"], app_type="client"),
-    #    gen_embed(clients=studio,ver=versions["studio"], app_type="studio")
-    #])
+        if has_update:
+            print(f"! Has update... updating to {versions["client"]}")
+
+            clients = download_clients(ver=versions["client"], app_type="client")
+            describe_db(clients=clients, ver=versions["client"], app_type="client")
+            embeds.append(gen_embed(clients=clients,ver=versions["client"], app_type="client"))
+
+
+    
+    if versions["studio"]:
+        print("! Studio archive:")
+        has_update = check_for_update('studio', versions["studio"])
+
+        if has_update:
+            print(f"! Has update... updating to {versions["studio"]}")
+
+            studio  = download_clients(ver=versions["studio"], app_type="studio")
+            describe_db(clients=studio, ver=versions["studio"], app_type="studio")
+            embeds.append(gen_embed(clients=studio,ver=versions["studio"], app_type="studio"))
+
+
+    print("! Done")
+
+    if len(embeds) > 0:
+        print("! We have an update chat, sending")
+        send_message(embeds=embeds)
+
