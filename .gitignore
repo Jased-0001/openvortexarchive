@@ -1,0 +1,5 @@
+archive/
+openvortexarchive.yaml
+openvortexarchive.db
+*.DS_Store
+*__pycache__

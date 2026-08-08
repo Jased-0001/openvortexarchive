@@ -1,0 +1,39 @@
+webhook: []
+
+vortex:
+  api:
+    url: "https://playvortex.io"
+    session_token: ""
+
+    client:
+      version: "/api/client-version"
+      icon: ""
+      download_urls: [
+        ["Windows", "/download/windows"],
+        ["macOS",   "/download/mac"    ],
+        ["Linux",   "/download/linux"  ]
+      ]
+
+    studio:
+      version: "/api/studio-version"
+      icon: ""
+      download_urls: [
+        ["Windows", "/download/studio-windows"],
+        ["macOS",   "/download/studio-mac"    ],
+        ["Linux",   "/download/studio-linux"  ]
+      ]
+
+destination:
+  url:              "https://example.com"
+  enable_downloads: true
+
+  client: [
+    ["Windows", "/download/windows/%fn"],
+    ["macOS",   "/download/mac/%fn"    ],
+    ["Linux",   "/download/linux/%fn"  ]
+  ]
+  studio: [
+    ["Windows", "/download/studio-windows/%fn"],
+    ["macOS",   "/download/studio-mac/%fn"    ],
+    ["Linux",   "/download/studio-linux/%fn"  ]
+  ]
