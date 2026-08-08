@@ -6,6 +6,7 @@ import sqlite3
 import re
 import time
 import hashlib
+import json
 from io import BytesIO
 
 with open("openvortexarchive.yaml", "r") as f:
@@ -110,9 +111,6 @@ def download_clients(ver:str,app_type:str):
         
     return downloaded
 
-
-
-
 def gen_embed(clients:list[dict], ver:str, app_type:str):
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
     
@@ -146,8 +144,6 @@ def gen_embed(clients:list[dict], ver:str, app_type:str):
         
 
     return embed
-    
-
 
 def send_message(embeds: list[webhook.Embed]):
     if type(Config["webhook"]) == str:
@@ -177,37 +173,43 @@ def send_message(embeds: list[webhook.Embed]):
         else:
             print(f"Payload delivered successfully, code {result.status_code}.")
 
+def get_latest_versions():
+    print("checking versions...")
+    versions = {}
 
-#send_embed(clients=[
-#    ("mac", "md5 maybe", "ISO-date-modified", "http://example.com"),
-#    ("windows", "md5 maybe", "ISO-date-modified", "http://example.com"),
-#    ("linux", "md5 maybe", "ISO-date-modified", "http://example.com")
-#    ], ver="v0.2.22")
-#send_embed(clients=[
-#    {
-#        "client-name":   "Windows",
-#        "success":       True,
-#        "md5-sum":       "md5",
-#        "last-modified": "ISO-last-modified",
-#        "download-url":  "https://example.com"
-#    },
-#    {
-#        "client-name":   "macOS",
-#        "success":       True,
-#        "md5-sum":       "md5",
-#        "last-modified": "ISO-last-modified",
-#        "download-url":  "https://example.com"
-#    },
-#    {
-#        "client-name":   "Linux",
-#        "success":       False
-#    }
-#], ver="v0.2.22",app_type="client")
+    vortex_api = Config["vortex"]["api"]
 
-#download_clients(ver="v0.2.22",app_type="client")
+    for i in ["client", "studio"]:
+        url = vortex_api["url"] + vortex_api[i]["version"]
 
-#send_embed(clients=download_clients(ver="v0.2.22", app_type="client"),ver="v0.2.22", app_type="client")
+        try:
+            tries = 3
+            timeout = 10
+            while tries > 0:
+                print(f" *- getting version of {i} from ")
+                request = requests.request(method="GET", url=url, cookies={"session_token": vortex_api["session_token"]})
+
+                if request.status_code == 200:
+                    data = json.loads(request.content.decode())
+                    assert "version" in data, f"version is not in data ({data})"
+                    print(f"   *- got {data["version"]}")
+                    versions[i] = data["version"]
+                    tries = -999
+                else:
+                    print(f"   *- failure {request.status_code}, trying again in {timeout}s")
+                    tries -= 1
+                    time.sleep(timeout)
+                    timeout += 10
+
+                if tries == 0:
+                    print(f"   *- giving up on {i}")
+        except Exception as e:
+            raise e
+        
+    return versions
+
+versions = get_latest_versions()
 send_message(embeds=[
-    gen_embed(clients=download_clients(ver="v0.2.22", app_type="client"),ver="v0.2.22", app_type="client"),
-    gen_embed(clients=download_clients(ver="v0.1.1",  app_type="studio"),ver="v0.1.1",  app_type="studio")
+    gen_embed(clients=download_clients(ver=versions["client"], app_type="client"),ver=versions["client"], app_type="client"),
+    gen_embed(clients=download_clients(ver=versions["studio"], app_type="studio"),ver=versions["studio"], app_type="studio")
 ])
