@@ -17,15 +17,18 @@ database = sqlite3.connect("./openvortexarchive.db")
 db_cur   = database.cursor()
 
 
-def db_write(table:str,values:list[str]):
+def db_write(table:str,values:list[str], data: tuple=()):
     assert db_cur, "no cursor"
-    db_cur.execute(f"INSERT INTO {table} ({",".join(values)}) VALUES ({",".join(["?" for i in range(len(values))])})")
-def db_update(table:str,values:list[str], where:list[str]=[]):
+    db_cur.execute(f"INSERT INTO {table} ({",".join(values)}) VALUES ({",".join(["?" for i in range(len(values))])})", data)
+    database.commit()
+def db_update(table:str,values:list[str], where:list[str]=[], data: tuple=()):
     assert db_cur, "no cursor"
-    db_cur.execute(f"UPDATE {table} SET{",".join([" " + i + "=?" for i in values])}{" WHERE" + " AND ".join([" " + i + "=?" for i in where])}")
+    db_cur.execute(f"UPDATE {table} SET{",".join([" " + i + "=?" for i in values])}{" WHERE" + " AND ".join([" " + i + "=?" for i in where])}", data)
+    database.commit()
 def db_delete(table:str, where:list[str]=[]):
     assert db_cur, "no cursor"
     db_cur.execute(f"DELETE FROM {table} {" WHERE" + " AND ".join([" " + i + "=?" for i in where])}")
+    database.commit()
 def db_read(table:str, values:list[str], where:list[str]=[], data: tuple=()) -> list:
     assert db_cur, "no cursor"
     db_cur.execute(f"SELECT {",".join(values)} FROM {table}{" WHERE" + " AND ".join([" " + i + " = (?)" for i in where]) if len(where) > 0 else ""}", data)
@@ -37,7 +40,6 @@ def templates(string:str, filename:str=""):
         string = string.replace("%fn", filename)
 
     return string
-
 
 def download_clients(ver:str,app_type:str):
     # will NOT check if there is an update
@@ -88,7 +90,9 @@ def download_clients(ver:str,app_type:str):
                         "code":          request.status_code,
                         "last-modified": request.headers["last-modified"] if "last-modified" in request.headers else None,
                         "md5-sum":       filesum,
-                        "download-url":  download_url
+                        "download-url":  download_url,
+                        "check-time":    datetime.datetime.now(datetime.UTC),
+                        "file-name":     fname
                     })
 
                     tries = -999
@@ -104,12 +108,23 @@ def download_clients(ver:str,app_type:str):
                     {
                         "client-name":   i[0],
                         "success":       False,
-                        "code":          request.status_code
-                    }) 
+                        "code":          request.status_code,
+                        "last-modified": None,
+                        "md5-sum":       None,
+                        "download-url":  None,
+                        "check-time":    datetime.datetime.now(datetime.UTC),
+                        "file-name":     None
+                    })
         except Exception as e:
             raise e
         
     return downloaded
+
+def describe_db(clients:list[dict], ver:str, app_type:str):
+    for i in clients:
+        db_write(table="archive",
+                 values=["success", "code", "client_version", "client_type", "time_checked", "file_md5_sum", "file_last_modified", "file_name"],
+                 data=(i["success"],i["code"],ver,app_type,i["check-time"].timestamp(),i["md5-sum"],i["last-modified"],i["file-name"]))
 
 def gen_embed(clients:list[dict], ver:str, app_type:str):
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
@@ -186,7 +201,7 @@ def get_latest_versions():
             tries = 3
             timeout = 10
             while tries > 0:
-                print(f" *- getting version of {i} from ")
+                print(f" *- getting version of {i} from {url}")
                 request = requests.request(method="GET", url=url, cookies={"session_token": vortex_api["session_token"]})
 
                 if request.status_code == 200:
@@ -208,8 +223,16 @@ def get_latest_versions():
         
     return versions
 
-versions = get_latest_versions()
-send_message(embeds=[
-    gen_embed(clients=download_clients(ver=versions["client"], app_type="client"),ver=versions["client"], app_type="client"),
-    gen_embed(clients=download_clients(ver=versions["studio"], app_type="studio"),ver=versions["studio"], app_type="studio")
-])
+if __name__ == "__main__":
+    versions = get_latest_versions()
+
+    clients = download_clients(ver=versions["client"], app_type="client")
+    studio  = download_clients(ver=versions["studio"], app_type="studio")
+
+    describe_db(clients=clients, ver=versions["client"], app_type="client")
+    describe_db(clients=studio,  ver=versions["studio"], app_type="studio")
+
+    send_message(embeds=[
+        gen_embed(clients=clients,ver=versions["client"], app_type="client"),
+        gen_embed(clients=studio,ver=versions["studio"], app_type="studio")
+    ])

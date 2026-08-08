@@ -1,0 +1,10 @@
+CREATE TABLE "archive" (
+	"success"	TEXT NOT NULL,
+	"code"	INTEGER NOT NULL,
+	"client_version"	TEXT NOT NULL,
+	"client_type"	TEXT NOT NULL,
+	"time_checked"	TEXT NOT NULL,
+	"file_md5_sum"	TEXT,
+	"file_last_modified"	TEXT,
+	"file_name"	TEXT
+)
