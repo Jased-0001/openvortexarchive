@@ -223,16 +223,42 @@ def get_latest_versions():
         
     return versions
 
+def check_for_update(app_type:str, version:str):
+    print(f"Checking if updated {app_type}...")
+    last_version_data = db_read(table="archive_meta", values=["last_version"], where=["client_type"], data=(app_type,))
+
+    if len(last_version_data) == 0:
+        print(" *- Is this the first run? No data found")
+        db_write(table="archive_meta", values=["last_version","client_type"], data=(version,app_type))
+        return True
+    
+    last_version = last_version_data[0][0]
+    
+    print(f" *- Saw {last_version} for {app_type}, current is {version}")
+    if last_version != version:
+        print(f" *- Version is different")
+        # record new version 
+        db_update(table="archive_meta", values=["last_version"], where=["client_type"],data=(version, app_type))
+        return True
+    else:
+        print(f" *- No update for {app_type}")
+        return False
+
+
+
+
 if __name__ == "__main__":
     versions = get_latest_versions()
+    check_for_update('studio', '0.1.1')
+    check_for_update('client', '0.3.0')
 
-    clients = download_clients(ver=versions["client"], app_type="client")
-    studio  = download_clients(ver=versions["studio"], app_type="studio")
+    #clients = download_clients(ver=versions["client"], app_type="client")
+    #studio  = download_clients(ver=versions["studio"], app_type="studio")
 
-    describe_db(clients=clients, ver=versions["client"], app_type="client")
-    describe_db(clients=studio,  ver=versions["studio"], app_type="studio")
+    #describe_db(clients=clients, ver=versions["client"], app_type="client")
+    #describe_db(clients=studio,  ver=versions["studio"], app_type="studio")
 
-    send_message(embeds=[
-        gen_embed(clients=clients,ver=versions["client"], app_type="client"),
-        gen_embed(clients=studio,ver=versions["studio"], app_type="studio")
-    ])
+    #send_message(embeds=[
+    #    gen_embed(clients=clients,ver=versions["client"], app_type="client"),
+    #    gen_embed(clients=studio,ver=versions["studio"], app_type="studio")
+    #])

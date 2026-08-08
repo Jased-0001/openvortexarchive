@@ -8,3 +8,8 @@ CREATE TABLE "archive" (
 	"file_last_modified"	TEXT,
 	"file_name"	TEXT
 )
+
+CREATE TABLE "archive_meta" (
+	"client_type"	TEXT NOT NULL,
+	"last_version"	TEXT NOT NULL
+)
