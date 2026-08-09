@@ -87,7 +87,7 @@ def request_with_tries(url:str) -> tuple[bool, requests.Response | None]:
 
             if tries == 0:
                 print(f"   *- giving up")
-                break
+                return (False, request)
     except Exception as e:
         raise e
     except KeyboardInterrupt:
