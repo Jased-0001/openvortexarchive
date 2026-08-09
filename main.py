@@ -1,4 +1,5 @@
 import datetime
+import string
 import requests
 import yaml
 import webhook
@@ -15,6 +16,19 @@ with open("openvortexarchive.yaml", "r") as f:
 
 database = sqlite3.connect("./openvortexarchive.db")
 db_cur   = database.cursor()
+
+class App:
+    def __init__(self, client_name: str, success: bool, code: int, check_time: datetime.datetime, last_modified: str|None = None, md5_sum: str|None = None, download_url: str|None = None, file_name: str|None = None):
+        self.client_name =   client_name
+        self.success =       success
+        self.code =          code
+        self.last_modified = last_modified
+        self.md5_sum =       md5_sum
+        self.download_url =  download_url
+        self.check_time =    check_time
+        self.file_name =     file_name
+
+        pass
 
 
 def db_write(table:str,values:list[str], data: tuple=()):
@@ -34,14 +48,53 @@ def db_read(table:str, values:list[str], where:list[str]=[], data: tuple=()) -> 
     db_cur.execute(f"SELECT {",".join(values)} FROM {table}{" WHERE" + " AND ".join([" " + i + " = (?)" for i in where]) if len(where) > 0 else ""}", data)
     return db_cur.fetchall()
 
-
-def templates(string:str, filename:str=""):
+def templates(string:str, filename:str="", platform:str="", client_type:str="", version:str="", content_disposition:str="", md5:str=""):
     if filename:
         string = string.replace("%fn", filename)
+    if platform:
+        string = string.replace("%platform", platform)
+    if client_type:
+        string = string.replace("%client_type", client_type)
+    if version:
+        string = string.replace("%version", version)
+    if content_disposition:
+        string = string.replace("%content-disposition", content_disposition)
+
+    if md5:
+        string = string.replace("%md5", md5)
 
     return string
 
-def download_clients(ver:str,app_type:str):
+def request_with_tries(url:str) -> tuple[bool, requests.Response | None]:
+    print(f" *- Hitting {url}... ")
+    tries = Config["retries"]["tries"] + 1
+    timeout = Config["retries"]["timeout"]
+    request = None
+    try:
+        while tries > 0:
+            request = requests.request(method="GET", url=url, cookies={"session_token": Config["vortex"]["api"]["session_token"]})
+            print(f"     *- GO!")
+
+            if request.status_code == 200:
+                print(" *- Success")
+                return (True, request)
+            else:
+                tries -= 1
+                if tries != 0:
+                    print(f"   *- failure {request.status_code}, trying again in {timeout}s")
+                    time.sleep(timeout)
+                    timeout += Config["retries"]["increment"]
+
+            if tries == 0:
+                print(f"   *- giving up")
+                break
+    except Exception as e:
+        raise e
+    except KeyboardInterrupt:
+        exit(1)
+    return (False, request)
+
+def download_clients(ver:str,app_type:str) -> list[App]:
     # will NOT check if there is an update
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
     
@@ -51,83 +104,64 @@ def download_clients(ver:str,app_type:str):
     for i in client_list["download_urls"]:
         print(f"Downloading '{ver}' of {app_type} \"{i[0]}\"")
         url = Config["vortex"]["api"]["url"] + i[1]
-        print(f" *- Hitting {url}... ")
 
-        try:
-            tries = 4
-            timeout = 10
-            while tries > 0:
-                request = requests.request(method="GET", url=url, cookies={"session_token": Config["vortex"]["api"]["session_token"]})
-                print(f"     *- GO!")
+        success, request = request_with_tries(url=url)
+        if success and request:
+            # MD5 sum the file
+            filesum = hashlib.md5(request.content).hexdigest()
+            print(f"   *- Filesum {filesum}")
 
-                if request.status_code == 200:
-                    # MD5 sum the file
-                    filesum = hashlib.md5(request.content).hexdigest()
-                    print(f"   *- Filesum {filesum}")
+            #start saving it
+            print("   *- found, saving")
 
-                    #start saving it
-                    print("   *- found, saving")
-                    filepath = f"archive/{app_type}/{i[0]}/"
-                    fname = f"{filesum}.{app_type}.{ver}.{re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]}"
-                    filepath += fname
+            content_disposition = re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]
 
-                    # determine download url from the filename
-                    download_url = None
+            fname = templates(
+                string=Config["destination"]["saving"]["filename"],
+                platform=i[0],
+                client_type=app_type,
+                version=ver,
+                md5=filesum,
+                content_disposition=content_disposition
+            )
+            filepath = templates(
+                string=Config["destination"]["saving"]["path"],
+                filename=fname,
+                platform=i[0],
+                client_type=app_type,
+                version=ver,
+                md5=filesum,
+                content_disposition=content_disposition
+            )
 
-                    if Config["destination"]["enable_downloads"]:
-                        # find client in list
-                        for x in Config["destination"][app_type]:
-                            if x[0] == i[0]:
-                                download_url = templates(string=Config["destination"]["url"] + x[1], filename=fname)
-                                break
 
-                    with open(filepath, "wb") as f:
-                        f.write(request.content)
+            with open(filepath, "wb") as f:
+                f.write(request.content)
 
-                    downloaded.append({
-                        "client-name":   i[0],
-                        "success":       True,
-                        "code":          request.status_code,
-                        "last-modified": request.headers["last-modified"] if "last-modified" in request.headers else None,
-                        "md5-sum":       filesum,
-                        "download-url":  download_url,
-                        "check-time":    datetime.datetime.now(datetime.UTC),
-                        "file-name":     fname
-                    })
 
-                    tries = -999
-                else:
-                    tries -= 1
-                    if tries != 0:
-                        print(f"   *- failure {request.status_code}, trying again in {timeout}s")
-                        time.sleep(timeout)
-                        timeout += 20
+            # determine download url from the filename
+            download_url = None
 
-                if tries == 0:
-                    print(f"   *- giving up on {i[0]}")
-                    downloaded.append(
-                    {
-                        "client-name":   i[0],
-                        "success":       False,
-                        "code":          request.status_code,
-                        "last-modified": None,
-                        "md5-sum":       None,
-                        "download-url":  None,
-                        "check-time":    datetime.datetime.now(datetime.UTC),
-                        "file-name":     None
-                    })
-        except Exception as e:
-            raise e
+            if Config["destination"]["download"]["enable_downloads"]:
+                # find client in list
+                for x in Config["destination"]["download"][app_type]:
+                    if x[0] == i[0]:
+                        download_url = templates(string=Config["destination"]["download"]["url"] + x[1], filename=fname)
+                        break
+            downloaded.append(App(client_name=i[0],success=True,code=request.status_code,last_modified=request.headers["last-modified"] if "last-modified" in request.headers else None,
+                md5_sum=filesum,download_url=download_url,check_time=datetime.datetime.now(datetime.UTC),file_name=fname))
+        else:
+            downloaded.append(App(client_name=i[0],success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
         
     return downloaded
 
-def describe_db(clients:list[dict], ver:str, app_type:str):
+def describe_db(clients:list[App], ver:str, app_type:str):
     for i in clients:
         db_write(table="archive",
                  values=["success", "code", "client_version", "client_type", "time_checked", "file_md5_sum", "file_last_modified", "file_name"],
-                 data=(i["success"],i["code"],ver,app_type,i["check-time"].timestamp(),i["md5-sum"],i["last-modified"],i["file-name"]))
+                 data=(i.success,i.code,ver,app_type,i.check_time.timestamp(),i.md5_sum,i.last_modified,i.file_name))
 
-def gen_embed(clients:list[dict], ver:str, app_type:str):
+def gen_embed(clients:list[App], ver:str, app_type:str):
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
     
     embed = webhook.Embed(f"New Vortex {app_type} {ver}", "")
@@ -138,23 +172,20 @@ def gen_embed(clients:list[dict], ver:str, app_type:str):
 
     for i in clients:
         newfield = webhook.EmbedField(
-            name=i["client-name"],
+            name=i.client_name,
             value="",
             inline=True
         )
 
-        if i["success"]:
-            if "md5-sum" in i:
-                if i["md5-sum"]:
-                    newfield.value += f"MD5 sum: {i["md5-sum"]}\n"
-            if "last-modified" in i:
-                if i["last-modified"]:
-                    newfield.value += f"Last Modified: {i["last-modified"]}\n"
-            if "download-url" in i:
-                if i["download-url"]:
-                    newfield.value += f"[Download]({i["download-url"]})\n"
+        if i.success:
+            if i.md5_sum:
+                newfield.value += f"MD5 sum: {i.md5_sum}\n"
+            if i.last_modified:
+                newfield.value += f"Last Modified: {i.last_modified}\n"
+            if i.download_url:
+                newfield.value += f"[Download]({i.download_url})\n"
         else:
-            newfield.value += f"(couldn't download client{f", {i["code"]}" if "code" in i else ""})"
+            newfield.value += f"(couldn't download client ({i.code})"
 
         embed.fields.append(newfield)
         
@@ -198,31 +229,18 @@ def get_latest_versions():
     for i in ["client", "studio"]:
         url = vortex_api["url"] + vortex_api[i]["version"]
 
-        try:
-            tries = 3
-            timeout = 10
-            while tries > 0:
-                print(f" *- getting version of {i} from {url}")
-                request = requests.request(method="GET", url=url, cookies={"session_token": vortex_api["session_token"]})
+        print(f" *- getting version of {i} from {url}")
+        success, request = request_with_tries(url=url)
 
-                if request.status_code == 200:
-                    data = json.loads(request.content.decode())
-                    assert "version" in data, f"version is not in data ({data})"
-                    print(f"   *- got {data["version"]}")
-                    versions[i] = data["version"]
-                    tries = -999
-                else:
-                    print(f"   *- failure {request.status_code}, trying again in {timeout}s")
-                    tries -= 1
-                    time.sleep(timeout)
-                    timeout += 10
+        if success and request:
+            data = json.loads(request.content.decode())
+            assert "version" in data, f"version is not in data ({data})"
+            print(f"   *- got {data["version"]}")
+            versions[i] = data["version"]
+        else:
+            print(f"   *- giving up on {i}")
+            versions[i] = None
 
-                if tries == 0:
-                    print(f"   *- giving up on {i}")
-                    versions[i] = None
-        except Exception as e:
-            raise e
-        
     return versions
 
 def check_for_update(app_type:str, version:str):

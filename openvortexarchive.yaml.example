@@ -1,5 +1,13 @@
 webhook: []
 
+# Templates:
+# %fn          - Filename
+# %platform    - Platform (like macOS)
+# %client_type - Type of client (studio, client)
+# %version     - Downloaded version (0.2.22)
+# %content_disposition
+# %
+
 vortex:
   api:
     url: "https://playvortex.io"
@@ -24,16 +32,23 @@ vortex:
       ]
 
 destination:
-  url:              "https://example.com"
-  enable_downloads: true
+  saving:
+    path: "archive/%client_type/%platform/%fn"
+    filename: "%md5.%client_type.%version.%content-disposition"
 
-  client: [
-    ["Windows", "/download/windows/%fn"],
-    ["macOS",   "/download/mac/%fn"    ],
-    ["Linux",   "/download/linux/%fn"  ]
-  ]
-  studio: [
-    ["Windows", "/download/studio-windows/%fn"],
-    ["macOS",   "/download/studio-mac/%fn"    ],
-    ["Linux",   "/download/studio-linux/%fn"  ]
-  ]
+
+
+  download:
+    enable_downloads: false
+    url:              "https://example.com"
+
+    client: [
+      ["Windows", "/download/windows/%fn"],
+      ["macOS",   "/download/mac/%fn"    ],
+      ["Linux",   "/download/linux/%fn"  ]
+    ]
+    studio: [
+      ["Windows", "/download/studio-windows/%fn"],
+      ["macOS",   "/download/studio-mac/%fn"    ],
+      ["Linux",   "/download/studio-linux/%fn"  ]
+    ]
