@@ -1,17 +1,23 @@
 webhook: []
 
 # Templates:
-# %fn                  - Filename
-# %platform            - Platform (like macOS)
-# %client_type         - Type of client (studio, client)
-# %version             - Downloaded version (0.2.22)
-# %content_disposition - Original Halo destined filename
-# %md5                 - md5 sum of the file
+# %<fn>                  - Filename
+# %<platform>            - platform (like mac)
+# %<client_type>         - Type of client (studio, client)
+# %<version>             - Downloaded version (0.2.22)
+# %<content_disposition> - Original Halo destined filename
+# %<md5>                 - md5 sum of the file
 
 retries:
   timeout: 20
   increment: 20
   tries: 3
+
+clients: [
+  "windows",
+  "mac",
+  "linux"
+]
 
 vortex:
   api:
@@ -20,40 +26,20 @@ vortex:
 
     client:
       version: "/api/client-version"
-      icon: ""
-      download_urls: [
-        ["Windows", "/download/windows"],
-        ["macOS",   "/download/mac"    ],
-        ["Linux",   "/download/linux"  ]
-      ]
+      download_url: "/download/%<platform>"
 
     studio:
       version: "/api/studio-version"
-      icon: ""
-      download_urls: [
-        ["Windows", "/download/studio-windows"],
-        ["macOS",   "/download/studio-mac"    ],
-        ["Linux",   "/download/studio-linux"  ]
-      ]
+      download_url: "/download/studio-%<platform>"
 
 destination:
   saving:
-    path: "archive/%client_type/%platform/%fn"
-    filename: "%md5.%client_type.%version.%content-disposition"
-
-
+    path: "archive/%client_type/%<platform>/%<fn>"
+    filename: "%<md5>.%<client_type>.%<version>.%<content-disposition>"
 
   download:
     enable_downloads: false
     url:              "https://example.com"
 
-    client: [
-      ["Windows", "/download/windows/%fn"],
-      ["macOS",   "/download/mac/%fn"    ],
-      ["Linux",   "/download/linux/%fn"  ]
-    ]
-    studio: [
-      ["Windows", "/download/studio-windows/%fn"],
-      ["macOS",   "/download/studio-mac/%fn"    ],
-      ["Linux",   "/download/studio-linux/%fn"  ]
-    ]
+    client: "/download/%<platform>/%<fn>"
+    studio: "/download/studio-%<platform>/%<fn>"

@@ -1,5 +1,4 @@
 import datetime
-import string
 import requests
 import yaml
 import webhook
@@ -8,6 +7,7 @@ import re
 import time
 import hashlib
 import json
+import traceback
 from io import BytesIO
 
 with open("openvortexarchive.yaml", "r") as f:
@@ -50,18 +50,18 @@ def db_read(table:str, values:list[str], where:list[str]=[], data: tuple=()) -> 
 
 def templates(string:str, filename:str="", platform:str="", client_type:str="", version:str="", content_disposition:str="", md5:str=""):
     if filename:
-        string = string.replace("%fn", filename)
+        string = string.replace("%<fn>", filename)
     if platform:
-        string = string.replace("%platform", platform)
+        string = string.replace("%<platform>", platform)
     if client_type:
-        string = string.replace("%client_type", client_type)
+        string = string.replace("%<client_type>", client_type)
     if version:
-        string = string.replace("%version", version)
+        string = string.replace("%<version>", version)
     if content_disposition:
-        string = string.replace("%content-disposition", content_disposition)
+        string = string.replace("%<content-disposition>", content_disposition)
 
     if md5:
-        string = string.replace("%md5", md5)
+        string = string.replace("%<md5>", md5)
 
     return string
 
@@ -88,78 +88,83 @@ def request_with_tries(url:str) -> tuple[bool, requests.Response | None]:
             if tries == 0:
                 print(f"   *- giving up")
                 return (False, request)
-    except Exception as e:
-        raise e
+    except Exception:
+        print(f"   *- we have failed")
+        print(traceback.format_exc())
     except KeyboardInterrupt:
         exit(1)
+
     return (False, request)
 
 def download_clients(ver:str,app_type:str) -> list[App]:
     # will NOT check if there is an update
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
     
-    client_list = Config["vortex"]["api"][app_type]
     downloaded  = []
 
-    for i in client_list["download_urls"]:
-        print(f"Downloading '{ver}' of {app_type} \"{i[0]}\"")
-        url = Config["vortex"]["api"]["url"] + i[1]
+    for i in Config["clients"]:
+        print(f"Downloading '{ver}' of {app_type} \"{i}\"")
+
+        url = Config["vortex"]["api"]["url"] + \
+            templates(string=Config["vortex"]["api"][app_type]["download_url"],
+            version=ver,
+            client_type=app_type,
+            platform=i
+            )
 
         success, request = request_with_tries(url=url)
         if success and request:
-            # MD5 sum the file
-            filesum = hashlib.md5(request.content).hexdigest()
-            print(f"   *- Filesum {filesum}")
+            try:
+                # MD5 sum the file
+                filesum = hashlib.md5(request.content).hexdigest()
+                print(f"   *- Filesum {filesum}")
 
-            #start saving it
-            print("   *- found, saving")
+                #start saving it
+                print("   *- found, saving")
 
-            content_disposition = re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]
+                content_disposition = re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]
 
-            fname = templates(
-                string=Config["destination"]["saving"]["filename"],
-                platform=i[0],
-                client_type=app_type,
-                version=ver,
-                md5=filesum,
-                content_disposition=content_disposition
-            )
-            filepath = templates(
-                string=Config["destination"]["saving"]["path"],
-                filename=fname,
-                platform=i[0],
-                client_type=app_type,
-                version=ver,
-                md5=filesum,
-                content_disposition=content_disposition
-            )
+                fname = templates(
+                    string=Config["destination"]["saving"]["filename"],
+                    platform=i, client_type=app_type, version=ver,
+                    md5=filesum, content_disposition=content_disposition
+                )
+                filepath = templates(
+                    string=Config["destination"]["saving"]["path"],
+                    filename=fname, platform=i, client_type=app_type, version=ver,
+                    md5=filesum, content_disposition=content_disposition
+                )
 
 
-            with open(filepath, "wb") as f:
-                f.write(request.content)
+                with open(filepath, "wb") as f:
+                    f.write(request.content)
 
 
-            # determine download url from the filename
-            download_url = None
+                # determine download url from the filename
+                download_url = None
 
-            if Config["destination"]["download"]["enable_downloads"]:
-                # find client in list
-                for x in Config["destination"]["download"][app_type]:
-                    if x[0] == i[0]:
-                        download_url = templates(string=Config["destination"]["download"]["url"] + x[1], filename=fname)
-                        break
-            downloaded.append(App(client_name=i[0],success=True,code=request.status_code,last_modified=request.headers["last-modified"] if "last-modified" in request.headers else None,
-                md5_sum=filesum,download_url=download_url,check_time=datetime.datetime.now(datetime.UTC),file_name=fname))
+                if Config["destination"]["download"]["enable_downloads"]:
+                    # find client in list
+                    for x in Config["destination"]["download"][app_type]:
+                        if x[0] == i:
+                            download_url = templates(string=Config["destination"]["download"]["url"] + x[1], filename=fname)
+                            break
+                downloaded.append(App(client_name=i,success=True,code=request.status_code,last_modified=request.headers["last-modified"] if "last-modified" in request.headers else None,
+                    md5_sum=filesum,download_url=download_url,check_time=datetime.datetime.now(datetime.UTC),file_name=fname))
+            except Exception as e:
+                print(f"   *- we have failed")
+                print(traceback.format_exc())
+                downloaded.append(App(client_name=i,success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
         else:
-            downloaded.append(App(client_name=i[0],success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
+            downloaded.append(App(client_name=i,success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
         
     return downloaded
 
 def describe_db(clients:list[App], ver:str, app_type:str):
     for i in clients:
         db_write(table="archive",
-                 values=["success", "code", "client_version", "client_type", "time_checked", "file_md5_sum", "file_last_modified", "file_name"],
-                 data=(i.success,i.code,ver,app_type,i.check_time.timestamp(),i.md5_sum,i.last_modified,i.file_name))
+                 values=["success", "code", "client_version", "client_type", "time_checked", "file_md5_sum", "file_last_modified", "file_name", "platform"],
+                 data=(i.success,i.code,ver,app_type,i.check_time.timestamp(),i.md5_sum,i.last_modified,i.file_name,i.client_name))
 
 def gen_embed(clients:list[App], ver:str, app_type:str):
     assert app_type == "studio" or app_type == "client", "app_type should be 'studio' or 'client'"
@@ -233,10 +238,16 @@ def get_latest_versions():
         success, request = request_with_tries(url=url)
 
         if success and request:
-            data = json.loads(request.content.decode())
-            assert "version" in data, f"version is not in data ({data})"
-            print(f"   *- got {data["version"]}")
-            versions[i] = data["version"]
+            try:
+                data = json.loads(request.content.decode())
+                assert "version" in data, f"version is not in data ({data})"
+                print(f"   *- got {data["version"]}")
+                versions[i] = data["version"]
+            except Exception as e:
+                print(f"   *- we have failed")
+                print(traceback.format_exc())
+                print(f"   *- giving up on {i}")
+                versions[i] = None
         else:
             print(f"   *- giving up on {i}")
             versions[i] = None
