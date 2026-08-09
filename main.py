@@ -280,32 +280,21 @@ def check_for_update(app_type:str, version:str):
 
 if __name__ == "__main__":
     versions = get_latest_versions()
+    assert versions["client"] or versions["server"], "is vortex down? failed to get either version info"
 
     embeds: list[webhook.Embed] = []
 
-    if versions["client"]:
-        print("! Client archive:")
-        has_update = check_for_update('client', versions["client"])
+    for i in ["client", "studio"]:
+        if versions[i]:
+            print(f"! {i} archive:")
+            has_update = check_for_update(app_type=i, version=versions[i])
 
-        if has_update:
-            print(f"! Has update... updating to {versions["client"]}")
+            if has_update:
+                print(f"! Has update... updating to {versions[i]}")
 
-            clients = download_clients(ver=versions["client"], app_type="client")
-            describe_db(clients=clients, ver=versions["client"], app_type="client")
-            embeds.append(gen_embed(clients=clients,ver=versions["client"], app_type="client"))
-
-
-    
-    if versions["studio"]:
-        print("! Studio archive:")
-        has_update = check_for_update('studio', versions["studio"])
-
-        if has_update:
-            print(f"! Has update... updating to {versions["studio"]}")
-
-            studio  = download_clients(ver=versions["studio"], app_type="studio")
-            describe_db(clients=studio, ver=versions["studio"], app_type="studio")
-            embeds.append(gen_embed(clients=studio,ver=versions["studio"], app_type="studio"))
+                clients = download_clients(ver=versions[i], app_type=i)
+                describe_db(clients=clients, ver=versions[i], app_type=i)
+                embeds.append(gen_embed(clients=clients,ver=versions[i], app_type=i))
 
 
     print("! Done")
