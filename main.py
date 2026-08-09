@@ -146,11 +146,10 @@ def download_clients(ver:str,app_type:str) -> list[App]:
                 download_url = None
 
                 if Config["destination"]["download"]["enable_downloads"]:
-                    # find client in list
-                    for x in Config["destination"]["download"][app_type]:
-                        if x[0] == i:
-                            download_url = templates(string=Config["destination"]["download"]["url"] + x[1], filename=fname)
-                            break
+                    download_url = templates(
+                        string=Config["destination"]["download"]["url"] + Config["destination"]["download"][app_type],
+                        filename=fname, platform=i, client_type=app_type, version=ver,
+                        md5=filesum, content_disposition=content_disposition)
                 downloaded.append(App(client_name=i,success=True,code=request.status_code,last_modified=request.headers["last-modified"] if "last-modified" in request.headers else None,
                     md5_sum=filesum,download_url=download_url,check_time=datetime.datetime.now(datetime.UTC),file_name=fname))
             except Exception as e:

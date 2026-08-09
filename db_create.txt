@@ -13,4 +13,4 @@ CREATE TABLE "archive" (
 CREATE TABLE "archive_meta" (
 	"client_type"	TEXT NOT NULL,
 	"last_version"	TEXT NOT NULL
-)
+);
