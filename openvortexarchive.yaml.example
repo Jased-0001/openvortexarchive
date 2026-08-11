@@ -30,7 +30,7 @@ vortex:
 
     studio:
       version: "/api/studio-version"
-      download_url: "/download/studio-%<platform>"
+      download_url: "/releases-studio/VortexStudio-%<platform>"
 
 destination:
   saving:
