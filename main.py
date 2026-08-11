@@ -19,6 +19,10 @@ with open("openvortexarchive.yaml", "r") as f:
 database = sqlite3.connect("./openvortexarchive.db")
 db_cur   = database.cursor()
 
+def log(msg):
+    print(msg)
+
+
 class App:
     def __init__(self, client_name: str, success: bool, code: int, check_time: datetime.datetime, last_modified: str|None = None, md5_sum: str|None = None, download_url: str|None = None, file_name: str|None = None):
         self.client_name =   client_name
@@ -68,31 +72,31 @@ def templates(string:str, filename:str="", platform:str="", client_type:str="", 
     return string
 
 def request_with_tries(url:str) -> tuple[bool, requests.Response | None]:
-    print(f" *- Hitting {url}... ")
+    log(f" *- Hitting {url}... ")
     tries = Config["retries"]["tries"] + 1
     timeout = Config["retries"]["timeout"]
     request = None
     try:
         while tries > 0:
             request = requests.request(method="GET", url=url, cookies={"session_token": Config["vortex"]["api"]["session_token"]})
-            print(f"     *- GO!")
+            log(f"     *- GO!")
 
             if request.status_code == 200:
-                print(" *- Success")
+                log(" *- Success")
                 return (True, request)
             else:
                 tries -= 1
                 if tries != 0:
-                    print(f"   *- failure {request.status_code}, trying again in {timeout}s")
+                    log(f"   *- failure {request.status_code}, trying again in {timeout}s")
                     time.sleep(timeout)
                     timeout += Config["retries"]["increment"]
 
             if tries == 0:
-                print(f"   *- giving up")
+                log(f"   *- giving up")
                 return (False, request)
     except Exception:
-        print(f"   *- we have failed")
-        print(traceback.format_exc())
+        log(f"   *- we have failed")
+        log(traceback.format_exc())
     except KeyboardInterrupt:
         exit(1)
 
@@ -104,8 +108,8 @@ def download_clients(ver:str,app_type:str) -> list[App]:
     
     downloaded  = []
 
-    for i in Config["clients"]:
-        print(f"Downloading '{ver}' of {app_type} \"{i}\"")
+    for i in Config["destination"]["download"]["platforms"][app_type]:
+        log(f"Downloading '{ver}' of {app_type} \"{i}\"")
 
         url = Config["vortex"]["api"]["url"] + \
             templates(string=Config["vortex"]["api"][app_type]["download_url"],
@@ -119,12 +123,17 @@ def download_clients(ver:str,app_type:str) -> list[App]:
             try:
                 # MD5 sum the file
                 filesum = hashlib.md5(request.content).hexdigest()
-                print(f"   *- Filesum {filesum}")
+                log(f"   *- Filesum {filesum}")
 
                 #start saving it
-                print("   *- found, saving")
+                log("   *- found, saving")
 
-                content_disposition = re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]
+                if not "client-disposition" in request.headers:
+                    log("   *- theres NO client disposition. THIS IS BAD. Making something up")
+                    content_disposition = f"{app_type}-{i}"
+                else:
+                    content_disposition = re.findall(pattern="filename=\"(.+)\"", string=request.headers['content-disposition'])[0]
+                
 
                 fname = templates(
                     string=Config["destination"]["saving"]["filename"],
@@ -153,8 +162,8 @@ def download_clients(ver:str,app_type:str) -> list[App]:
                 downloaded.append(App(client_name=i,success=True,code=request.status_code,last_modified=request.headers["last-modified"] if "last-modified" in request.headers else None,
                     md5_sum=filesum,download_url=download_url,check_time=datetime.datetime.now(datetime.UTC),file_name=fname))
             except Exception as e:
-                print(f"   *- we have failed")
-                print(traceback.format_exc())
+                log(f"   *- we have failed")
+                log(traceback.format_exc())
                 downloaded.append(App(client_name=i,success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
         else:
             downloaded.append(App(client_name=i,success=False,code=request.status_code if request else -1,check_time=datetime.datetime.now(datetime.UTC)))
@@ -221,13 +230,13 @@ def send_message(embeds: list[webhook.Embed]):
         try:
             result.raise_for_status()
         except requests.exceptions.HTTPError as err:
-            print(err)
-            print(result.content)
+            log(err)
+            log(result.content)
         else:
-            print(f"Payload delivered successfully, code {result.status_code}.")
+            log(f"Payload delivered successfully, code {result.status_code}.")
 
 def get_latest_versions():
-    print("checking versions...")
+    log("checking versions...")
     versions = {}
 
     vortex_api = Config["vortex"]["api"]
@@ -235,45 +244,45 @@ def get_latest_versions():
     for i in ["client", "studio"]:
         url = vortex_api["url"] + vortex_api[i]["version"]
 
-        print(f" *- getting version of {i} from {url}")
+        log(f" *- getting version of {i} from {url}")
         success, request = request_with_tries(url=url)
 
         if success and request:
             try:
                 data = json.loads(request.content.decode())
                 assert "version" in data, f"version is not in data ({data})"
-                print(f"   *- got {data["version"]}")
+                log(f"   *- got {data["version"]}")
                 versions[i] = data["version"]
             except Exception as e:
-                print(f"   *- we have failed")
-                print(traceback.format_exc())
-                print(f"   *- giving up on {i}")
+                log(f"   *- we have failed")
+                log(traceback.format_exc())
+                log(f"   *- giving up on {i}")
                 versions[i] = None
         else:
-            print(f"   *- giving up on {i}")
+            log(f"   *- giving up on {i}")
             versions[i] = None
 
     return versions
 
 def check_for_update(app_type:str, version:str):
-    print(f"Checking if updated {app_type}...")
+    log(f"Checking if updated {app_type}...")
     last_version_data = db_read(table="archive_meta", values=["last_version"], where=["client_type"], data=(app_type,))
 
     if len(last_version_data) == 0:
-        print(" *- Is this the first run? No data found")
+        log(" *- Is this the first run? No data found")
         db_write(table="archive_meta", values=["last_version","client_type"], data=(version,app_type))
         return True
     
     last_version = last_version_data[0][0]
     
-    print(f" *- Saw {last_version} for {app_type}, current is {version}")
+    log(f" *- Saw {last_version} for {app_type}, current is {version}")
     if last_version != version:
-        print(f" *- Version is different")
+        log(f" *- Version is different")
         # record new version 
         db_update(table="archive_meta", values=["last_version"], where=["client_type"],data=(version, app_type))
         return True
     else:
-        print(f" *- No update for {app_type}")
+        log(f" *- No update for {app_type}")
         return False
 
 
@@ -287,20 +296,20 @@ if __name__ == "__main__":
 
     for i in ["client", "studio"]:
         if versions[i]:
-            print(f"! {i} archive:")
+            log(f"! {i} archive:")
             has_update = check_for_update(app_type=i, version=versions[i])
 
             if has_update:
-                print(f"! Has update... updating to {versions[i]}")
+                log(f"! Has update... updating to {versions[i]}")
 
                 clients = download_clients(ver=versions[i], app_type=i)
                 describe_db(clients=clients, ver=versions[i], app_type=i)
                 embeds.append(gen_embed(clients=clients,ver=versions[i], app_type=i))
 
 
-    print("! Done")
+    log("! Done")
 
     if len(embeds) > 0:
-        print("! We have an update chat, sending")
+        log("! We have an update chat, sending")
         send_message(embeds=embeds)
 

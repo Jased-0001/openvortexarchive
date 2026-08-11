@@ -13,11 +13,6 @@ retries:
   increment: 20
   tries: 3
 
-clients: [
-  "windows",
-  "mac",
-  "linux"
-]
 
 vortex:
   api:
@@ -43,3 +38,14 @@ destination:
 
     client: "/download/%<platform>/%<fn>"
     studio: "/download/studio-%<platform>/%<fn>"
+    platforms:
+      client: [
+        "windows",
+        "mac",
+        "linux"
+      ]
+      studio: [
+        "windows",
+        "macos",
+        "linux"
+      ]
