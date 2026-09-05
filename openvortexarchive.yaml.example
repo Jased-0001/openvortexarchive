@@ -1,5 +1,7 @@
-webhook: []
-
+webhook:
+  urls: []
+  content: ""
+  
 # Templates:
 # %<fn>                  - Filename
 # %<platform>            - platform (like mac)
