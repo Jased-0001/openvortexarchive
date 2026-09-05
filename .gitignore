@@ -3,3 +3,4 @@ openvortexarchive.yaml
 openvortexarchive.db
 *.DS_Store
 *__pycache__
+logs/*

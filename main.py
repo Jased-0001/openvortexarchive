@@ -19,9 +19,13 @@ with open("openvortexarchive.yaml", "r") as f:
 
 database = sqlite3.connect("./openvortexarchive.db")
 db_cur   = database.cursor()
+logfile = None
 
-def log(msg):
-    print(msg)
+def log(*args, end:str="\n"):
+    if logfile:
+        logfile.write(("{}  " * len(args)).format(*args) + end)
+
+    print(*args, end=end)
 
 
 class App:
@@ -297,6 +301,7 @@ def write_new_version(app_type:str, version:str, update:bool):
 
 
 if __name__ == "__main__":
+    logfile = open(f"logs/{datetime.datetime.now()}.log", "x")
     """
     ./main.py <update, meta_clear, db_setup>
     update     - checks for update and runs (no arguments will also run this)
@@ -376,4 +381,7 @@ if __name__ == "__main__":
         json_data = {}
         for i in data:
             json_data[i[0]] = i[1]
-        print(json.dumps(json_data), end="")
+        log(json.dumps(json_data), end="")
+        
+    if logfile:
+        logfile.close()
