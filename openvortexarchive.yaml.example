@@ -1,6 +1,6 @@
-webhook:
-  urls: []
-  content: ""
+webhooks: [
+    [], # url, content
+  ]
   
 # Templates:
 # %<fn>                  - Filename

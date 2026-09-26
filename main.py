@@ -106,7 +106,6 @@ def request_with_tries(url:str) -> tuple[bool, requests.Response | None]:
         finally:
             if tries == 0:
                 log(f"   *- giving up")
-                return (False, request)
 
 
     return (False, request)
@@ -217,30 +216,28 @@ def gen_embed(clients:list[App], ver:str, app_type:str):
     return embed
 
 def send_message(embeds: list[webhook.Embed]):
-    if type(Config["webhook"]["urls"]) == str:
-        webhook_destination = [Config["webhook"]["urls"]]
-    elif type(Config["webhook"]["urls"]) == list:
-        webhook_destination = Config["webhook"]["urls"]
-    else:
-        raise Exception("type of webhook configuration is not a list or string")
-
     json_embeds = []
     for i in embeds: json_embeds.append(i.to_dict())
 
-    data ={
-        "content":   Config["webhook"]["content"],
-        "username":  "openvortexarchive",
-        "embeds":    json_embeds
-    }
-
-    for i in webhook_destination:
-        result = requests.post(url=i, json=data)
-
+    for i in Config["webhooks"]:
+        result = None
+        
         try:
+            result = requests.post(url=i[0], json={
+                "content":   i[1],
+                "username":  "openvortexarchive",
+                "embeds":    json_embeds
+            })
+
             result.raise_for_status()
+        except IndexError as err:
+            log(err)
+            log("we are misconfigured,.,..")
         except requests.exceptions.HTTPError as err:
             log(err)
-            log(result.content)
+
+            if result:
+                log(result.content)
         else:
             log(f"Payload delivered successfully, code {result.status_code}.")
 
@@ -308,12 +305,14 @@ if __name__ == "__main__":
     meta_clear - clears meta database which contains version numbers
     db_setup   - sets up database
     meta_get   - returns json archive_meta
+    dey_run    - sends test to webhook(s)
     """
 
-    run_up =     len(sys.argv) == 1 or "update"     in sys.argv
+    run_up =     len(sys.argv) == 1 or     "update"     in sys.argv
     clear_meta =                           "meta_clear" in sys.argv
     db_setup =                             "db_setup"   in sys.argv
     meta_get =                             "meta_get"   in sys.argv
+    dry_run =                              "dry_run"    in sys.argv
 
     db_structure = {
         "archive": """CREATE TABLE "archive" (
@@ -382,6 +381,11 @@ if __name__ == "__main__":
         for i in data:
             json_data[i[0]] = i[1]
         log(json.dumps(json_data), end="")
+    elif dry_run:
+        embeds: list[webhook.Embed] = []
+        embeds.append(webhook.Embed("Hello 1", "This is my Data"))
+        embeds.append(webhook.Embed("Hello 2", "My name is OpenVortexArchive"))
+        send_message(embeds=embeds)
         
     if logfile:
         logfile.close()
